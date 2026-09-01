@@ -1,0 +1,133 @@
+---
+title: "LAB_03_Shiguihara"
+author: "Gabriel Furlan Shiguihara"
+format: html
+editor: source
+---
+
+```{r}
+library(dplyr)
+library(readr)
+library(stringr)
+
+```
+
+1.  Importe, utilizando o pacote `readr`, cada um dos três arquivos disponíveis. Os objetos resultantes devem ser chamados `flights`, `airlines` e `airports`
+
+```{r}
+## AIRPORTS
+airports <- read_csv("airports.csv",  col_select = c(IATA_CODE, CITY, STATE, LATITUDE, LONGITUDE), col_types = cols(
+  IATA_CODE = col_character(),
+  CITY = col_character(),
+  STATE = col_character(),
+  LATITUDE = col_double(),
+  LONGITUDE = col_double()
+))
+airports
+```
+
+```{r}
+## FLIGHTS
+leitor_chunk <- function(chunk, pos) {
+  chunk |>
+    filter(!str_starts(DESTINATION_AIRPORT, "1")) |>
+    filter(!is.na(DESTINATION_AIRPORT) & !is.na(ARRIVAL_DELAY)) |>
+    group_by(DESTINATION_AIRPORT) |>
+    summarise(
+      soma_atrasos = sum(ARRIVAL_DELAY),
+      qtd_voos = n(),
+      .groups = "drop"
+    )
+}
+
+
+flights_temporario <- read_csv_chunked(
+  "flights.csv",
+  callback = DataFrameCallback$new(leitor_chunk),
+  chunk_size = 1000000, 
+  col_types = cols_only(
+    DESTINATION_AIRPORT = col_character(),
+    ARRIVAL_DELAY = col_double()
+  )
+)
+
+flights <- flights_temporario |>
+  group_by(DESTINATION_AIRPORT) |>
+  summarise(
+    media_atraso = sum(soma_atrasos) / sum(qtd_voos),
+    .groups = "drop"
+  )
+
+flights
+```
+
+```{r}
+## AIRLINES
+airlines <- read_csv("airlines.csv", col_types = cols(
+  IATA_CODE = col_character(),
+  AIRLINE = col_character()
+))
+```
+
+2.  Selecione a operação apropriada `join` para incluir, na tabela flights, as colunas `CITY` e `STATE` do objeto airports.
+
+```{r}
+## verificando se há diferença entre "DESTINATION_AIRPORT" e "IATA_CODE"
+
+aeroportos_diferentes <- anti_join(
+  flights, 
+  airports, 
+  by = c("DESTINATION_AIRPORT" = "IATA_CODE")
+)
+aeroportos_diferentes
+```
+
+```{r}
+flights <- flights |>
+  left_join(airports |> select(IATA_CODE, CITY, STATE), by = c("DESTINATION_AIRPORT" = "IATA_CODE"))
+```
+
+3.  Quantos aeroportos cada estado possui? Apresente uma tabela ordenada de forma decrescente (no número de aeroportos).
+
+```{r}
+airports |> group_by(STATE)|>
+  count(STATE, name = "Numero de Aeroportos", sort = TRUE)
+```
+
+4.  Apresente um mapa representando todos os atrasos observados por aeroporto.
+
+```{r}
+library(leaflet)
+
+## Juntando flights e airports via "leftjoin" por "DESTINATION_AIRPORT" = "IATA_CODE"
+## Filtrando para que não haja Coordenadas nulas
+
+dados_mapa <- flights |>
+  left_join(
+    airports |> select(IATA_CODE, LATITUDE, LONGITUDE), 
+    by = c("DESTINATION_AIRPORT" = "IATA_CODE")
+  ) |>
+  filter(!is.na(LATITUDE) & !is.na(LONGITUDE)) 
+
+## usando o pacote "leaflet" para gerar o gráfico
+
+this <- leaflet(data = dados_mapa) |>
+  addTiles() |>
+  addMarkers(
+    lng = ~LONGITUDE, 
+    lat = ~LATITUDE,
+  )
+
+this
+```
+
+
+```{r}
+Sys.setenv(TZ = "America/Sao_Paulo")
+Sys.time()
+```
+
+
+
+
+
