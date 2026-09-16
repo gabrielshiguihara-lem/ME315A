@@ -1,0 +1,139 @@
+---
+title: "LAB05_Shiguihara"
+author: "Gabiel Furlan Shiguihara"
+format: pdf
+editor: source
+---
+
+## Carregar pacotes
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyverse)
+library(leaflet)
+library(readr)
+```
+
+## Criando a Funcao
+
+```{r}
+
+analisa_aeronave <- function(tail_number, arquivo) {
+  
+  # 1. Criamos filtra_chunks que gera a regra de leitura dos chunks.
+  
+  filtra_chunks <- DataFrameCallback$new(
+    function(bloco, pos) {
+      filter(bloco, TAIL_NUMBER == tail_number)
+    }
+  )
+  
+  # 2. Fazemos a leitura em chunks de 100000 e com a regra acima
+  
+  flights <- read_csv_chunked(
+    file = arquivo,
+    callback = filtra_chunks,
+    chunk_size = 100000,
+    show_col_types = FALSE
+  )
+  
+  # 3. Agora que lemos o arquivo geramos a tabela tidy com as especificacoes do item b.
+  
+  tabela_tidy <- flights |>
+    arrange(YEAR, MONTH, DAY, SCHEDULED_DEPARTURE)
+  
+  # 4. Leitura do arquivo "airports.csv"
+  
+  dados_aeroportos <- read_csv("airports.csv", show_col_types = FALSE)
+  
+  # 5. Juntando as coordenadas (latitude e longitude) de origem e destino
+  
+  tabela_para_grafico <- tabela_tidy |>
+    left_join(dados_aeroportos, by = c("ORIGIN_AIRPORT" = "IATA_CODE")) |>
+    rename(lat_origem = LATITUDE, lon_origem = LONGITUDE) |>
+    left_join(dados_aeroportos, by = c("DESTINATION_AIRPORT" = "IATA_CODE")) |>
+    rename(lat_destino = LATITUDE, lon_destino = LONGITUDE) 
+  
+  # 6. Gerando mapa 
+  mapa_final <- ggplot(data = tabela_para_grafico) +
+    annotation_borders("state", colour = "lightblue", fill = "black") +
+
+  # Usando geom_curve para dar a sensacao de voo curvo 
+    
+    geom_curve(
+      aes(
+        x = lon_origem, y = lat_origem,
+        xend = lon_destino, yend = lat_destino,
+        color = DISTANCE 
+      ),
+      size = 0.4,  # Linha fixa e bem fina para TODOS os voos
+      alpha = 0.2, # Bastante transparência (voos repetidos na mesma rota vão se somando e ficando mais fortes)
+      curvature = 0.2,
+      arrow = arrow(length = unit(0.1, "cm")) # Setinha menor
+    ) +
+    
+    scale_color_viridis_c(option = "plasma", name = "Distância") +
+    theme_void() +
+    labs(
+      title = paste("Trajeto da aeronave", tail_number),
+      subtitle = "Cor indica a distância do voo (voos sobrepostos aparecem mais fortes)"
+    )
+
+  # 7. A função retorna uma lista nomeada com a tabela e o gráfico
+  
+  resultado_final <- list(
+    tabela = tabela_para_grafico,
+    grafico = mapa_final
+  )
+  
+  return(resultado_final)
+}
+
+
+
+```
+
+## Para retornar os resultados
+
+```{r}
+# 1. Executa a função com o aquivo "flights.csv" e ultiliza a aeronave de interesse
+
+meu_resultado <- analisa_aeronave(
+  tail_number = "N171US", 
+  arquivo = "flights.csv" 
+)
+
+# 2. Visualiza a tabela (tidy)
+
+meu_resultado$tabela
+
+# 3. Mosrtra o grafico
+
+meu_resultado$grafico
+```
+
+## Horário
+
+```{r}
+Sys.setenv(TZ = "America/Sao_Paulo")
+Sys.time()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
