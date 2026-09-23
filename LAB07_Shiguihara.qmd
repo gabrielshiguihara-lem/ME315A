@@ -1,0 +1,134 @@
+---
+title: "LAB_07_Shiguihara"
+author: "Gabriel Furlan Shiguihara"
+format: pdf
+editor: source
+---
+
+1.  Baixe o arquivo uwmadison.sqlite3. Conecte-se a ele usando o pacote RSQLite, armazenando a conexão em uma variável conn.
+
+```{r}
+library(DBI)
+library(RSQLite)
+
+conn <- dbConnect(SQLite(), "database.sqlite3")
+```
+
+1.1 conferindo a database
+
+```{r}
+tabelas <- dbListTables(conn)
+print(tabelas)
+```
+
+2.  Quem são e quantos são os professores que lecionaram disciplinas cujo tópico era estatística (subjects.abbreviation='STAT');
+
+```{sql connection=conn}
+SELECT i.name AS NOMES_PROFESSORES, COUNT(DISTINCT i.name) AS QUANTIDADE
+FROM subjects s
+INNER JOIN subject_memberships m ON s.code = m.subject_code
+INNER JOIN course_offerings c ON m.course_offering_uuid = c.uuid
+INNER JOIN sections se ON c.uuid = se.course_offering_uuid
+INNER JOIN teachings t ON se.uuid = t.section_uuid
+INNER JOIN instructors i ON t.instructor_id = i.id
+WHERE s.abbreviation = 'STAT'
+GROUP BY i.name
+UNION ALL
+SELECT 'QUANTIDADE TOTAL' , COUNT(DISTINCT i.id)
+FROM subjects s
+INNER JOIN subject_memberships m ON s.code = m.subject_code
+INNER JOIN course_offerings c ON m.course_offering_uuid = c.uuid
+INNER JOIN sections se ON c.uuid = se.course_offering_uuid
+INNER JOIN teachings t ON se.uuid = t.section_uuid
+INNER JOIN instructors i ON t.instructor_id = i.id
+WHERE s.abbreviation = 'STAT';
+```
+
+3.  O GPA americano é definido numa escala de 0 a 4, em que A = 4, AB = 3.5, B = 3, BC = 2.5, C = 2, D = 1 e F = 0. Determinando a nota média de cada oferecimento pela ponderação da quantidade de alunos em cada extrato com os valores numéricos de cada conceito, indique (no que se referente a disciplinas no assunto de estatística):
+
+- Quem é o professor mais difícil?
+
+```{sql connection=conn}
+SELECT i.name AS NOME_PROFESSOR, SUM(gd.a_count * 4.0 + gd.ab_count * 3.5 + gd.b_count * 3.0 + gd.bc_count * 2.5 + gd.c_count * 2.0 + gd.d_count * 1.0) / SUM(gd.a_count + gd.ab_count + gd.b_count + gd.bc_count + gd.c_count + gd.d_count + gd.f_count)
+AS MEDIA
+FROM subjects s
+INNER JOIN subject_memberships m ON s.code = m.subject_code
+INNER JOIN course_offerings c ON m.course_offering_uuid = c.uuid
+INNER JOIN grade_distributions gd ON c.uuid = gd.course_offering_uuid
+INNER JOIN sections se ON c.uuid = se.course_offering_uuid
+INNER JOIN teachings t ON se.uuid = t.section_uuid
+INNER JOIN instructors i ON t.instructor_id = i.id
+WHERE s.abbreviation = 'STAT'
+GROUP BY i.name
+HAVING SUM(gd.a_count + gd.ab_count + gd.b_count + gd.bc_count + gd.c_count + gd.d_count + gd.f_count) > 0
+ORDER BY MEDIA asc
+LIMIT 1
+```
+
+- Quem é o professor mais fácil?
+
+```{sql connection=conn}
+SELECT i.name AS NOME_PROFESSOR, SUM(gd.a_count * 4.0 + gd.ab_count * 3.5 + gd.b_count * 3.0 + gd.bc_count * 2.5 + gd.c_count * 2.0 + gd.d_count * 1.0) / SUM(gd.a_count + gd.ab_count + gd.b_count + gd.bc_count + gd.c_count + gd.d_count + gd.f_count)
+AS MEDIA
+FROM subjects s
+INNER JOIN subject_memberships m ON s.code = m.subject_code
+INNER JOIN course_offerings c ON m.course_offering_uuid = c.uuid
+INNER JOIN grade_distributions gd ON c.uuid = gd.course_offering_uuid
+INNER JOIN sections se ON c.uuid = se.course_offering_uuid
+INNER JOIN teachings t ON se.uuid = t.section_uuid
+INNER JOIN instructors i ON t.instructor_id = i.id
+WHERE s.abbreviation = 'STAT'
+GROUP BY i.name
+ORDER BY MEDIA desc
+LIMIT 3
+```
+
+- Qual é a disciplina mais difícil?
+
+```{sql connection=conn}
+SELECT c.name AS DISCIPLINA , SUM(gd.a_count * 4.0 + gd.ab_count * 3.5 + gd.b_count * 3.0 + gd.bc_count * 2.5 + gd.c_count * 2.0 + gd.d_count * 1.0) / SUM(gd.a_count + gd.ab_count + gd.b_count + gd.bc_count + gd.c_count + gd.d_count + gd.f_count)
+AS MEDIA
+FROM subjects s
+INNER JOIN subject_memberships m ON s.code = m.subject_code
+INNER JOIN course_offerings c ON m.course_offering_uuid = c.uuid
+INNER JOIN grade_distributions gd ON c.uuid = gd.course_offering_uuid
+INNER JOIN sections se ON c.uuid = se.course_offering_uuid
+INNER JOIN teachings t ON se.uuid = t.section_uuid
+INNER JOIN instructors i ON t.instructor_id = i.id
+WHERE s.abbreviation = 'STAT'
+GROUP BY DISCIPLINA
+HAVING SUM(gd.a_count + gd.ab_count + gd.b_count + gd.bc_count + gd.c_count + gd.d_count + gd.f_count) > 0
+ORDER BY MEDIA asc
+LIMIT 1
+
+```
+
+- Qual é a disciplina mais fácil?
+
+```{sql connection=conn}
+SELECT c.name AS DISCIPLINA , SUM(gd.a_count * 4.0 + gd.ab_count * 3.5 + gd.b_count * 3.0 + gd.bc_count * 2.5 + gd.c_count * 2.0 + gd.d_count * 1.0) / SUM(gd.a_count + gd.ab_count + gd.b_count + gd.bc_count + gd.c_count + gd.d_count + gd.f_count)
+AS MEDIA
+FROM subjects s
+INNER JOIN subject_memberships m ON s.code = m.subject_code
+INNER JOIN course_offerings c ON m.course_offering_uuid = c.uuid
+INNER JOIN grade_distributions gd ON c.uuid = gd.course_offering_uuid
+INNER JOIN sections se ON c.uuid = se.course_offering_uuid
+INNER JOIN teachings t ON se.uuid = t.section_uuid
+INNER JOIN instructors i ON t.instructor_id = i.id
+WHERE s.abbreviation = 'STAT'
+GROUP BY DISCIPLINA
+ORDER BY MEDIA DESC
+LIMIT 4
+```
+
+4.  Desconecte do banco de dados.
+
+```{r}
+dbDisconnect(conn)
+```
+
+# Horário de Compilação
+```{r}
+Sys.setenv(TZ = "America/Sao_Paulo")
+Sys.time()
+```
