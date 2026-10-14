@@ -1,0 +1,162 @@
+---
+title: "LAB08_Shiguihara"
+author: "Gabriel Furlan Shiguihara"
+format: pdf
+
+---
+
+```{r}
+#| include: false
+
+Sys.setenv(POLARS_SKIP_CPU_CHECK = "1")
+
+reticulate::py_require(c("polars==1.33.1", "pyarrow"))
+```
+
+# Importando Polars
+
+```{python}
+import polars as pl
+print("Versao do Polars:", pl.__version__)  
+
+null_values = ["\\N"]
+
+pl.Config.set_tbl_rows(20)
+pl.Config.set_tbl_cols(20)
+pl.Config.set_fmt_str_lengths(60)
+```
+
+# Leitura dos dados
+
+Os arquivos `.tsv.gz` devem estar na mesma pasta deste `.qmd`.
+
+## 1.1 Criando a `basics`
+
+```{python}
+schema_basics = {
+    "tconst": pl.String,
+    "titleType": pl.String,
+    "primaryTitle": pl.String,
+    "originalTitle": pl.String,
+    "isAdult": pl.Int64,
+    "startYear": pl.Int64,
+    "endYear": pl.Int64,
+    "runtimeMinutes": pl.Int64,
+    "genres": pl.String,
+}
+
+basics = pl.read_csv(
+    "title.basics0.tsv.gz",
+    separator="\t",
+    null_values=null_values,
+    quote_char=None,  
+    schema_overrides=schema_basics,
+)
+
+```
+
+## 1.2 Criando a `ratings`
+
+```{python}
+schema_ratings = {
+    "tconst": pl.String,
+    "averageRating": pl.Float64,
+    "numVotes": pl.Int64,
+}
+
+ratings = pl.read_csv(
+    "title.ratings.tsv.gz",
+    separator="\t",
+    null_values=null_values,
+    quote_char=None,
+    schema_overrides=schema_ratings,
+)
+
+```
+
+## 1.3 Criando a `principals`
+
+```{python}
+schema_principals = {
+    "tconst": pl.String,
+    "ordering": pl.Int64,
+    "nconst": pl.String,
+    "category": pl.String,
+    "job": pl.String,
+    "characters": pl.String,
+}
+
+principals = pl.read_csv(
+    "title.principals0.tsv.gz",
+    separator="\t",
+    null_values=null_values,
+    quote_char=None,
+)
+
+```
+
+
+
+## Base de filmes avaliados
+
+Junção de `basics` com `ratings`, mantendo apenas títulos do tipo `movie`.
+
+```{python}
+filmes = (
+    basics
+    .filter(pl.col("titleType") == "movie")
+    .join(ratings, on="tconst", how="inner")
+)
+print(filmes.shape)
+```
+
+# Atividade
+
+## Questão 1: 5 filmes com as maiores notas (desempate por número de votos)
+
+```{python}
+q1 = (filmes.sort(["averageRating", "numVotes"], descending=[True, True])
+    .select(["tconst", "primaryTitle", "averageRating", "numVotes"])
+    .head(5)
+)
+print(q1)
+```
+
+
+## Questão 2: gênero mais frequente entre os filmes com nota maior que 8
+
+```{python}
+q2 = (
+    filmes
+    .filter(pl.col("averageRating") > 8)
+    .with_columns(pl.col("genres").str.split(",").alias("genero"))
+    .explode("genero")
+    .group_by("genero")
+    .agg(pl.len().alias("n_filmes"))
+    .sort(["n_filmes", "genero"], descending=[True, False])
+    .head(10)
+)
+print(q2)
+print("Gênero mais frequente:", q2["genero"][0], "-", q2["n_filmes"][0], "filmes")
+```
+
+## Questão 3: 3 atores/atrizes que mais participaram de filmes com nota maior que 7.5
+
+```{python}
+filmes_75 = filmes.filter(pl.col("averageRating") > 7.5).select("tconst")
+
+q3 = (
+    principals
+    .filter(pl.col("category").is_in(["actor", "actress"]))
+    .join(filmes_75, on="tconst", how="inner")
+    .group_by("nconst")
+    .agg(pl.col("tconst").n_unique().alias("n_filmes"))
+    .sort(["n_filmes", "nconst"], descending=[True, False])
+    .head(3)
+)
+print(q3)
+```
+```{r}
+Sys.setenv(TZ = "America/Sao_Paulo")
+Sys.time()
+```
