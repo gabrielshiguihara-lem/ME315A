@@ -1,0 +1,350 @@
+---
+title: "LAB9_Shiguihra"
+author: "Gabriel Furlan Shiguihara"
+format:
+  pdf:
+    toc: true
+    code-fold: false
+    embed-resources: true
+engine: knitr
+---
+
+# 0. Configuração do ambiente
+
+## 0.1 Biblioteca R: `reticulate` e pacotes Python
+
+O `reticulate` conecta o R ao Python. A função `py_require()` declara quais pacotes
+Python são necessários; na primeira execução eles são baixados automaticamente
+(pode levar alguns minutos).
+
+```{r}
+#| label: setup-r
+library(reticulate)
+
+# Declara os pacotes Python usados neste documento (instalados automaticamente)
+py_require(c("pandas", "numpy", "plotnine", "statsmodels", "scipy", "matplotlib"))
+
+py_config()
+```
+
+## 0.2 Bibliotecas Python
+
+```{python}
+#| label: setup-python
+# pandas: manipulação de tabelas
+import pandas as pd
+
+# numpy: operações numéricas (logaritmos, ajuste de retas)
+import numpy as np
+
+# plotnine: gráficos em camadas (gramática de gráficos, como o ggplot2)
+from plotnine import *
+from plotnine.data import diamonds as diamonds_builtin
+
+import warnings
+warnings.filterwarnings("ignore")
+
+pd.set_option("display.max_columns", 20)
+pd.set_option("display.width", 120)
+```
+
+# 1. Importar o conjunto de dados `diamonds`
+
+Se existir um arquivo `diamonds.csv` na mesma pasta deste documento, ele é usado.
+Caso contrário, usa-se o conjunto `diamonds` embutido no `plotnine`.
+
+```{python}
+#| label: importa-dados
+import os
+
+caminho_csv = "diamonds.csv"
+
+if os.path.exists(caminho_csv):
+    diamonds = pd.read_csv(caminho_csv)
+    # remove coluna de índice sem nome, se existir
+    diamonds = diamonds.loc[:, ~diamonds.columns.str.contains("^Unnamed")]
+    print("Dados lidos do arquivo CSV.")
+else:
+    diamonds = diamonds_builtin.copy()
+    print("Arquivo CSV não encontrado: usando plotnine.data.diamonds.")
+
+print("Linhas, colunas:", diamonds.shape)
+diamonds.head()
+```
+
+
+
+# 2. Associação entre peso (`carat`) e preço (`price`)
+
+Ações para um gráfico de boa qualidade: transparência (`alpha`) contra a sobreposição
+de pontos, escala log nos dois eixos para linearizar a relação, linha de tendência e
+rótulos claros.
+
+
+
+```{python}
+#| label: definicoes-auxiliares
+
+# Função personalizada para formatar valores em dólares sem depender do mizani
+def dollar_format(x):
+    return [f"${v:,.0f}" for v in x]
+
+fmt_dolar = dollar_format
+
+ordem_cut = ["Fair", "Good", "Very Good", "Premium", "Ideal"]
+ordem_color = ["D", "E", "F", "G", "H", "I", "J"]
+ordem_clarity = ["I1", "SI2", "SI1", "VS2", "VS1", "VVS2", "VVS1", "IF"]
+
+#| label: q2-melhorado
+#| fig-width: 7.5
+#| fig-height: 5
+p_q2 = (
+    ggplot(diamonds, aes(x="carat", y="price"))
+    + geom_point(alpha=0.08, size=0.8, color="#1f4e79")
+    + geom_smooth(method="lm", color="#d62728", size=1.2)
+    + scale_x_log10(breaks=[0.2, 0.5, 1, 2, 3, 5])
+    + scale_y_log10(labels=dollar_format)
+    + labs(
+        title="Diamantes mais pesados são mais caros",
+        subtitle="Relação entre peso e preço, em escala logarítmica (n = 53.940)",
+        x="Peso (quilates, escala log)",
+        y="Preço (US$, escala log)",
+    )
+    + theme_minimal()
+    + theme(figure_size=(7.5, 5))
+)
+p_q2.show()
+```
+
+
+
+## Parágrafo de achados (Questão 2)
+
+**Ações para garantir qualidade:** (i) testei primeiro o gráfico simples e identifiquei
+sobreposição de pontos e uma relação curva com variância crescente; (ii) usei
+transparência (`alpha`) e pontos menores para revelar a densidade; (iii) apliquei escala
+logarítmica nos dois eixos para linearizar a relação e estabilizar a variância;
+(iv) adicionei uma linha de tendência; (v) coloquei título, subtítulo, rótulos com
+unidades e um tema limpo.
+
+**Achados:** existe uma associação **positiva e muito forte** entre peso e preço: quanto
+mais quilates, mais caro o diamante. A relação **não é linear** na escala original, mas
+fica aproximadamente **linear em escala log-log**, com inclinação maior que 1 (o preço
+cresce proporcionalmente mais que o peso) e correlação próxima de 1. Também se nota que
+há faixas verticais de pontos em pesos "redondos" (0,5; 1; 1,5; 2 ct), porque os
+diamantes tendem a ser lapidados e vendidos nesses pesos de referência. Por fim, para um
+mesmo peso há grande variação de preço, o que sugere que **outras características
+(corte, cor, clareza) também influenciam o valor**, tema das próximas questões.
+
+# 3. A relação carat × price é a mesma em todos os cortes?
+
+## 3.1 Um painel por corte
+
+```{python}
+#| label: q3-facetas
+#| fig-width: 10
+#| fig-height: 6
+p_q3 = (
+    ggplot(diamonds, aes(x="carat", y="price"))
+    + geom_point(alpha=0.08, size=0.7, color="#1f4e79")
+    + geom_smooth(method="lm", color="#d62728", size=1)
+    + facet_wrap("~cut", nrow=2)
+    + scale_x_log10(breaks=[0.3, 1, 3])
+    + scale_y_log10(labels=fmt_dolar)
+    + labs(
+        title="A relação peso–preço por tipo de corte",
+        x="Peso (quilates, escala log)",
+        y="Preço (US$, escala log)",
+    )
+    + theme_minimal()
+    + theme(figure_size=(10, 6))
+)
+p_q3.show()
+```
+
+## 3.2 Todas as retas juntas
+
+Para comparar **inclinação e nível** das retas, colocamo-las no mesmo gráfico, uma cor
+por corte (sem pontos, para não poluir).
+
+```{python}
+#| label: q3-retas-juntas
+#| fig-width: 8
+#| fig-height: 5
+p_q3b = (
+    ggplot(diamonds, aes(x="carat", y="price", color="cut", fill="cut"))
+    + geom_smooth(method="lm", size=1.1, alpha=0.15)
+    + scale_x_log10(breaks=[0.3, 0.5, 1, 2, 3])
+    + scale_y_log10(labels=fmt_dolar)
+    + scale_color_cmap_d(cmap_name="viridis", name="Corte")
+    + scale_fill_cmap_d(cmap_name="viridis", name="Corte")
+    + labs(
+        title="Retas de tendência peso–preço por corte",
+        x="Peso (quilates, escala log)",
+        y="Preço (US$, escala log)",
+    )
+    + theme_minimal()
+    + theme(figure_size=(8, 5))
+)
+p_q3b.show()
+```
+
+
+## Parágrafo de conclusão (Questão 3)
+
+Em todos os cortes a relação é **positiva e aproximadamente linear em escala log-log**,
+ou seja, o padrão geral "mais quilates → mais caro" se repete em cada grupo. Porém, ao
+comparar as retas, vemos que o **nível (intercepto) e a inclinação variam um pouco entre
+cortes** (veja a tabela acima): a relação **não é exatamente a mesma**, ainda que seja
+qualitativamente semelhante. Os painéis também mostram que os grupos têm tamanhos muito
+diferentes (poucos `Fair`, muitos `Ideal`) e cobrem faixas de peso distintas, o que deve
+ser considerado ao comparar. Conclusão: o corte **modifica** a relação (principalmente o
+patamar de preço para um mesmo peso), mas não a destrói.
+
+# 4. Preço × peso considerando corte, cor e clareza ao mesmo tempo
+
+Combinando as três variáveis categóricas temos 5 × 7 × 8 = **280 combinações possíveis**.
+
+```{python}
+#| label: q4-combinacoes
+combos = (
+    diamonds.groupby(["cut", "color", "clarity"], observed=True)
+    .size()
+    .reset_index(name="n")
+)
+
+print("Combinações existentes:", len(combos))
+print("Mínimo de diamantes em uma combinação:", combos["n"].min())
+print("Mediana:", combos["n"].median())
+print("Combinações com menos de 30 diamantes:", (combos["n"] < 30).sum())
+```
+
+## 4.1 Tentativa direta: facetas cor × clareza, retas coloridas por corte
+
+```{python}
+#| label: q4-grade
+#| fig-width: 13
+#| fig-height: 12
+p_q4a = (
+    ggplot(diamonds, aes(x="carat", y="price", color="cut"))
+    + geom_smooth(method="lm", se=False, size=0.8)
+    + facet_grid("clarity ~ color")
+    + scale_x_log10(breaks=[0.3, 1, 3])
+    + scale_y_log10(labels=fmt_dolar)
+    + scale_color_cmap_d(cmap_name="viridis", name="Corte")
+    + labs(
+        title="Peso × preço para cada combinação de cor, clareza e corte",
+        x="Peso (quilates, escala log)",
+        y="Preço (US$, escala log)",
+    )
+    + theme_minimal()
+    + theme(figure_size=(13, 12), axis_text=element_text(size=6))
+)
+p_q4a.show()
+```
+
+## 4.2 Resumindo a informação: mapa de calor das inclinações
+
+Resumimos cada combinação em um número (a inclinação log-log) e **filtramos**
+combinações com menos de 30 diamantes ou pouca variação de peso.
+
+```{python}
+#| label: q4-inclinacoes
+linhas = []
+for (corte, cor, clar), g in diamonds.groupby(["cut", "color", "clarity"], observed=True):
+    # exige n mínimo e variação de peso, senão a reta não é confiável
+    if len(g) < 30 or g["carat"].nunique() < 5:
+        continue
+    b, a = np.polyfit(np.log10(g["carat"]), np.log10(g["price"]), 1)
+    linhas.append({"cut": corte, "color": cor, "clarity": clar,
+                   "inclinacao": b, "n": len(g)})
+
+incl_ok = pd.DataFrame(linhas)
+
+# Garante a ordem correta das categorias para o gráfico
+incl_ok["cut"]     = pd.Categorical(incl_ok["cut"],     categories=ordem_cut,     ordered=True)
+incl_ok["color"]   = pd.Categorical(incl_ok["color"],   categories=ordem_color,   ordered=True)
+incl_ok["clarity"] = pd.Categorical(incl_ok["clarity"], categories=ordem_clarity, ordered=True)
+
+print(f"Combinações mantidas: {len(incl_ok)} de {len(combos)}")
+incl_ok["inclinacao"].describe().round(2)
+```
+
+```{python}
+#| label: q4-heatmap
+#| fig-width: 12
+#| fig-height: 7
+p_q4b = (
+    ggplot(incl_ok, aes(x="color", y="clarity", fill="inclinacao"))
+    + geom_tile(color="white")
+    + facet_wrap("~cut", nrow=2)
+    + scale_fill_cmap(cmap_name="viridis", name="Inclinação\n(log-log)")
+    + labs(
+        title="Inclinação da relação peso–preço por cor, clareza e corte",
+        subtitle="Só combinações com pelo menos 30 diamantes",
+        x="Cor (D = melhor, J = pior)",
+        y="Clareza (I1 = pior, IF = melhor)",
+    )
+    + theme_minimal()
+    + theme(figure_size=(12, 7))
+)
+p_q4b.show()
+```
+
+## 4.3 Quanto o patamar de preço muda? (preço mediano por 1 ct)
+
+Comparamos o **nível** de preço de diamantes com peso parecido (0,9 a 1,1 ct), por cor e
+clareza, isolando o efeito da qualidade do efeito do peso.
+
+```{python}
+#| label: q4-preco-1ct
+um_carat = diamonds[(diamonds["carat"] >= 0.9) & (diamonds["carat"] <= 1.1)]
+
+resumo = (
+    um_carat.groupby(["color", "clarity"], observed=True)
+    .agg(preco_mediano=("price", "median"), n=("price", "size"))
+    .reset_index()
+)
+resumo = resumo[resumo["n"] >= 10].copy()
+
+# Texto do rótulo calculado antes (mais seguro que expressões dentro do aes)
+resumo["rotulo"] = (resumo["preco_mediano"] / 100).round().astype(int) * 100
+resumo["rotulo"] = resumo["rotulo"].astype(str)
+
+p_q4c = (
+    ggplot(resumo, aes(x="color", y="clarity", fill="preco_mediano"))
+    + geom_tile(color="white")
+    + geom_text(aes(label="rotulo"), size=6, color="white")
+    + scale_fill_cmap(cmap_name="magma", name="Preço\nmediano (US$)")
+    + labs(
+        title="Preço mediano de diamantes de ~1 ct",
+        subtitle="Cor e clareza mudam bastante o preço, mesmo com peso igual",
+        x="Cor (D = melhor, J = pior)",
+        y="Clareza (I1 = pior, IF = melhor)",
+    )
+    + theme_minimal()
+    + theme(figure_size=(9, 5.5))
+)
+p_q4c.show()
+```
+
+## Dificuldades encontradas e conclusão (Questão 4)
+
+**A relação entre preço e peso é a mesma em todas as configurações?** Em **direção**, sim:
+em praticamente todas as combinações, mais peso significa preço maior. Em **intensidade e
+nível**, não: as inclinações variam entre combinações (mapa de calor) e, principalmente,
+o **patamar de preço** muda bastante com a cor e a clareza (último gráfico): para um mesmo
+peso, diamantes de melhor cor e clareza custam mais. Portanto, **peso é o principal
+determinante do preço, mas a qualidade (corte, cor e clareza) desloca e ajusta essa
+relação**; analisar o peso isoladamente esconde parte importante da história.
+
+# Informações da sessão (reprodutibilidade)
+
+```{python}
+#| label: sessao
+import sys, plotnine
+print("Python:", sys.version.split()[0])
+print("pandas:", pd.__version__)
+print("numpy:", np.__version__)
+print("plotnine:", plotnine.__version__)
+```
